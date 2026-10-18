@@ -15,6 +15,7 @@ export const TERMS_OF_USE_URL =
 export const PRIVACY_POLICY_URL = "https://trainxp.vercel.app/privacy";
 
 export const PRO_ENTITLEMENT_ID = "trainxp_pro";
+export const TRAINXP_OFFERING_ID = "trainxp_pro";
 
 let isConfigured = false;
 let configuration: Promise<boolean> | null = null;
@@ -129,25 +130,29 @@ export async function fetchOfferings(): Promise<{
 }> {
   const fallbackAnnual: PackageDisplay = {
     id: "annual",
-    title: "Yearly Plan",
+    title: "1 Năm",
     priceString: "—",
-    periodText: "/ year",
+    periodText: "/ năm",
+    perMonthPrice: "—",
+    badge: "THANH TOÁN THEO NĂM",
     hasTrial: false,
   };
 
   const fallbackMonthly: PackageDisplay = {
     id: "monthly",
-    title: "Monthly Plan",
+    title: "1 Tháng",
     priceString: "—",
-    periodText: "/ month",
+    periodText: "/ tháng",
+    badge: "LINH HOẠT",
     hasTrial: false,
   };
 
   const fallbackWeekly: PackageDisplay = {
     id: "weekly",
-    title: "Weekly Plan",
+    title: "1 Tuần",
     priceString: "—",
-    periodText: "/ week",
+    periodText: "/ tuần",
+    badge: "NGẮN HẠN",
     hasTrial: false,
   };
 
@@ -161,8 +166,9 @@ export async function fetchOfferings(): Promise<{
 
   try {
     const offerings = await Purchases.getOfferings();
-    const current = offerings.current;
-    if (!current) {
+    const trainXpOffering = offerings.all[TRAINXP_OFFERING_ID];
+    if (!trainXpOffering) {
+      console.warn("[Purchases] TrainXP offering is unavailable:", TRAINXP_OFFERING_ID);
       return {
         annual: fallbackAnnual,
         monthly: fallbackMonthly,
@@ -170,9 +176,47 @@ export async function fetchOfferings(): Promise<{
       };
     }
 
-    const rcAnnual = current.annual;
-    const rcMonthly = current.monthly;
-    const rcWeekly = current.weekly;
+    const findPackage = (
+      type: "annual" | "monthly" | "weekly",
+      rcDirect?: PurchasesPackage | null,
+    ) => {
+      if (rcDirect) return rcDirect;
+      const list = trainXpOffering.availablePackages || [];
+      return (
+        list.find((p) => {
+          const id = (p.identifier || "").toLowerCase();
+          const prodId = (p.product?.identifier || "").toLowerCase();
+          if (type === "annual")
+            return (
+              id.includes("annual") ||
+              id.includes("year") ||
+              prodId.includes("year")
+            );
+          if (type === "monthly")
+            return (
+              id.includes("monthly") ||
+              id.includes("month") ||
+              prodId.includes("month")
+            );
+          if (type === "weekly")
+            return (
+              id.includes("weekly") ||
+              id.includes("week") ||
+              prodId.includes("week")
+            );
+          return false;
+        }) || null
+      );
+    };
+
+    const rcAnnual = findPackage("annual", trainXpOffering.annual);
+    const rcMonthly = findPackage("monthly", trainXpOffering.monthly);
+    const rcWeekly = findPackage("weekly", trainXpOffering.weekly);
+    console.info(
+      "[Purchases] TrainXP offering and products:",
+      trainXpOffering.identifier,
+      trainXpOffering.availablePackages.map((pkg) => pkg.product.identifier),
+    );
 
     return {
       annual: rcAnnual

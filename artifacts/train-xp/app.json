@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.trainxp.workout",
-      "buildNumber": "4",
+      "buildNumber": "5",
       "usesAppleSignIn": true,
       "infoPlist": {
         "NSSupportsLiveActivities": true,

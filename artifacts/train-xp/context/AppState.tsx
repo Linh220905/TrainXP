@@ -17,6 +17,8 @@ import {
   replayCloudOutbox,
   clearCloudOutboxForUser,
   syncAppStateToCloud,
+  syncCollectionsToCloud,
+  syncProfileToCloud,
   ensureUserSession,
   supabase,
 } from "@/lib/supabase";
@@ -355,7 +357,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     current.current = next;
     if (mounted.current) setSnapshot(next);
   };
-  const save = (next: StateSnapshot) => {
+  const save = (next: StateSnapshot, previous?: StateSnapshot) => {
     const key = storageKey.current,
       userId = activeUser.current,
       version = generation.current;
@@ -364,7 +366,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         if (version !== generation.current || !mounted.current) return;
         if (userId) {
           setSyncStatus("syncing");
+          if (next.hasOnboarded)
+            await syncProfileToCloud(next.profile, next.stats, undefined, userId);
           await syncAppStateToCloud(next, userId);
+          if (previous) await syncCollectionsToCloud(previous, next, userId);
           if (version === generation.current && mounted.current)
             setSyncStatus("synced");
         } else setSyncStatus("local");
@@ -389,7 +394,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       needsStats ? withDerivedStats(changed) : changed,
     );
     publish(next);
-    void save(next);
+    void save(next, before);
     return next;
   };
   const bindPurchases = async (userId: string | null, version: number) => {
@@ -439,6 +444,15 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         });
       }
       await save(current.current);
+      if (generation.current !== version || !mounted.current) return;
+      const collectionsKey = `@train-xp/collections-synced:${userId}`;
+      if (
+        !(await hasPendingCloudMutations(userId)) &&
+        !(await AsyncStorage.getItem(collectionsKey))
+      ) {
+        await syncCollectionsToCloud(initialState, current.current, userId);
+        await AsyncStorage.setItem(collectionsKey, "1");
+      }
     } catch {
       if (generation.current === version && mounted.current)
         setSyncStatus("error");
@@ -710,6 +724,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const resetOnboarding = async () => {
     const next = commit((s) => ({ ...s, hasOnboarded: false }));
     await writeJson(storageKey.current, next);
+    await removeStored("@train-xp/onboarding-draft");
   };
   const updateProfile = (updates: Partial<Profile>) =>
     commit((s) => ({

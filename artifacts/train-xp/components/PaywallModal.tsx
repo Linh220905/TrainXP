@@ -7,7 +7,6 @@ import {
   Alert,
   Linking,
   Modal,
-  Platform,
   useWindowDimensions,
   Pressable,
   ScrollView,
@@ -100,7 +99,7 @@ export function PaywallModal({
       if (cancelled) return;
       setOfferings(data);
       const available = (["annual", "monthly", "weekly"] as const).filter(
-        (plan) => data[plan].rcPackage,
+        (plan) => Boolean(data[plan].rcPackage),
       );
       setOfferStatus(available.length ? "ready" : "unavailable");
       if (available.length) setSelectedPlan(available[0]);
@@ -143,7 +142,10 @@ export function PaywallModal({
     try {
       const pkg = offerings ? offerings[plan] : null;
       if (!pkg?.rcPackage) {
-        Alert.alert(t.paywall.purchaseError, t.paywall.purchaseErrorDefault);
+        Alert.alert(
+          t.paywall.purchaseError,
+          t.paywall.plansUnavailableRetry,
+        );
         return;
       }
       const isSuccess = await purchaseSubscription(pkg);
@@ -241,7 +243,11 @@ export function PaywallModal({
         ]}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { minHeight: height - insets.top - Math.max(insets.bottom, 6) - 4 },
+          ]}
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
@@ -318,8 +324,9 @@ export function PaywallModal({
             ) : null}
             {/* Annual (Best Value) */}
             <Pressable
-              disabled={loading || offerStatus !== "ready"}
+              disabled={loading || !annualPkg?.rcPackage}
               accessibilityRole="radio"
+              accessibilityState={{ selected: selectedPlan === "annual" }}
               onPress={() => handleSelectPlan("annual")}
               style={[
                 styles.planCard,
@@ -355,15 +362,18 @@ export function PaywallModal({
                   <Text style={styles.perUnitText}>{t.paywall.perYear}</Text>
                 </Text>
                 <Text style={styles.subPrice}>
-                  ≈ {annualPkg?.perMonthPrice || "—"} {t.paywall.perMonth}
+                  ≈{" "}
+                  {annualPkg?.perMonthPrice || "—"}{" "}
+                  {t.paywall.perMonth}
                 </Text>
               </View>
             </Pressable>
 
             {/* Monthly (Flexible) */}
             <Pressable
-              disabled={loading || offerStatus !== "ready"}
+              disabled={loading || !monthlyPkg?.rcPackage}
               accessibilityRole="radio"
+              accessibilityState={{ selected: selectedPlan === "monthly" }}
               onPress={() => handleSelectPlan("monthly")}
               style={[
                 styles.planCard,
@@ -397,8 +407,9 @@ export function PaywallModal({
 
             {/* Weekly (Short Term) */}
             <Pressable
-              disabled={loading || offerStatus !== "ready"}
+              disabled={loading || !weeklyPkg?.rcPackage}
               accessibilityRole="radio"
+              accessibilityState={{ selected: selectedPlan === "weekly" }}
               onPress={() => handleSelectPlan("weekly")}
               style={[
                 styles.planCard,
@@ -439,12 +450,7 @@ export function PaywallModal({
               style={({ pressed }) => [
                 styles.ctaButton,
                 {
-                  opacity:
-                    pressed || loading
-                      ? 0.9
-                      : !offerings?.[selectedPlan]?.rcPackage
-                        ? 0.5
-                        : 1,
+                  opacity: pressed || loading ? 0.85 : 1,
                 },
               ]}
             >
@@ -665,16 +671,16 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
   pricingSection: {
-    gap: 6,
-    marginVertical: 3,
+    gap: 8,
+    marginVertical: 4,
   },
   planCard: {
     backgroundColor: CARD_BG,
-    borderRadius: 13,
+    borderRadius: 16,
     borderWidth: 1.5,
     borderColor: BORDER_COLOR,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -686,35 +692,35 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     shadowColor: BLUE_ACCENT,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.3,
     shadowRadius: 10,
     elevation: 4,
   },
   badgeTag: {
     position: "absolute",
-    top: -8,
-    right: 12,
+    top: -9,
+    right: 14,
     backgroundColor: BLUE_ACCENT,
-    paddingHorizontal: 7,
-    paddingVertical: 1.5,
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
     borderRadius: 999,
   },
   badgeTagText: {
     color: "#070B14",
-    fontSize: 8.5,
+    fontSize: 9,
     fontWeight: "900",
-    letterSpacing: 0.3,
+    letterSpacing: 0.4,
   },
   planLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 12,
     flex: 1,
   },
   radioCircle: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     borderWidth: 1.5,
     borderColor: "#475569",
     alignItems: "center",
@@ -725,22 +731,22 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   radioDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
     backgroundColor: BLUE_ACCENT,
   },
   planInfo: {
     flex: 1,
   },
   planTitle: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "800",
     color: "#FFFFFF",
-    marginBottom: 1,
+    marginBottom: 2,
   },
   planSub: {
-    fontSize: 10.5,
+    fontSize: 11,
     color: "#94A3B8",
     fontWeight: "500",
   },
@@ -749,19 +755,19 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   mainPrice: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "900",
     color: "#FFFFFF",
   },
   perUnitText: {
-    fontSize: 9.5,
+    fontSize: 10.5,
     color: "#94A3B8",
     fontWeight: "600",
   },
   subPrice: {
-    fontSize: 9.5,
+    fontSize: 10.5,
     color: "#94A3B8",
-    marginTop: 1,
+    marginTop: 2,
     fontWeight: "500",
   },
   ctaSection: {

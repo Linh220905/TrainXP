@@ -101,11 +101,12 @@ export async function signInWithGoogle(): Promise<AuthUser | null> {
     // Extract auth tokens or code from redirect URL
     const parsedUrl = new URL(authRes.url);
     const hash = parsedUrl.hash ? parsedUrl.hash.substring(1) : "";
-    const params = new URLSearchParams(hash || parsedUrl.search);
+    const hashParams = new URLSearchParams(hash);
+    const queryParams = new URLSearchParams(parsedUrl.search);
 
-    const accessToken = params.get("access_token");
-    const refreshToken = params.get("refresh_token");
-    const code = params.get("code");
+    const accessToken = hashParams.get("access_token") || queryParams.get("access_token");
+    const refreshToken = hashParams.get("refresh_token") || queryParams.get("refresh_token");
+    const code = queryParams.get("code") || hashParams.get("code");
 
     let sessionUser: any = null;
 
@@ -122,8 +123,7 @@ export async function signInWithGoogle(): Promise<AuthUser | null> {
       if (setErr) throw setErr;
       sessionUser = setRes?.user;
     } else {
-      const { data: sessData } = await supabase.auth.getSession();
-      sessionUser = sessData?.session?.user;
+      throw new Error("Google did not return a session. Check the Supabase redirect URL.");
     }
 
     if (!sessionUser) {

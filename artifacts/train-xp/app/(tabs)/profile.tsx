@@ -61,6 +61,11 @@ const THEME = {
   textSubtle: "#64748B",
 };
 
+const STORE_URL =
+  Platform.OS === "ios"
+    ? process.env.EXPO_PUBLIC_APP_STORE_URL
+    : process.env.EXPO_PUBLIC_PLAY_STORE_URL;
+
 // 6-Axis Muscle Balance Radar Component
 function MuscleBalanceRadar({
   muscleCounts = {},
@@ -355,6 +360,7 @@ export default function ProfileScreen() {
   };
 
   const handleRateApp = () => {
+    if (!STORE_URL) return;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     Alert.alert(
       t.profile.rateAppTitle,
@@ -367,11 +373,7 @@ export default function ProfileScreen() {
             void Haptics.notificationAsync(
               Haptics.NotificationFeedbackType.Success,
             );
-            const storeUrl =
-              Platform.OS === "ios"
-                ? "https://apps.apple.com"
-                : "https://play.google.com/store";
-            void Linking.openURL(storeUrl).catch(() => undefined);
+            void Linking.openURL(STORE_URL).catch(() => undefined);
           },
         },
       ],
@@ -1234,28 +1236,30 @@ export default function ProfileScreen() {
                   <Feather name="chevron-right" size={16} color="#64748B" />
                 </Pressable>
 
-                <Pressable
-                  onPress={handleRateApp}
-                  style={styles.settingActionRow}
-                >
-                  <View
-                    style={[
-                      styles.settingActionIcon,
-                      { backgroundColor: "rgba(234, 179, 8, 0.12)" },
-                    ]}
+                {STORE_URL ? (
+                  <Pressable
+                    onPress={handleRateApp}
+                    style={styles.settingActionRow}
                   >
-                    <Feather name="star" size={16} color="#EAB308" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.settingActionTitle}>
-                      {t.profile.rateApp}
-                    </Text>
-                    <Text style={styles.settingActionSub}>
-                      {t.profile.rateAppSub}
-                    </Text>
-                  </View>
-                  <Feather name="chevron-right" size={16} color="#64748B" />
-                </Pressable>
+                    <View
+                      style={[
+                        styles.settingActionIcon,
+                        { backgroundColor: "rgba(234, 179, 8, 0.12)" },
+                      ]}
+                    >
+                      <Feather name="star" size={16} color="#EAB308" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.settingActionTitle}>
+                        {t.profile.rateApp}
+                      </Text>
+                      <Text style={styles.settingActionSub}>
+                        {t.profile.rateAppSub}
+                      </Text>
+                    </View>
+                    <Feather name="chevron-right" size={16} color="#64748B" />
+                  </Pressable>
+                ) : null}
 
                 <Pressable
                   onPress={handleResetOnboarding}

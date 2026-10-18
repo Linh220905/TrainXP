@@ -50,7 +50,8 @@ type CloudMutation = {
     | "routine-delete"
     | "workout-upsert"
     | "workout-delete"
-    | "bodyweight-upsert";
+    | "bodyweight-upsert"
+    | "bodyweight-delete";
   payload: any;
 };
 
@@ -180,6 +181,13 @@ async function executeCloudMutation(mutation: CloudMutation): Promise<void> {
           });
       break;
     }
+    case "bodyweight-delete":
+      result = await supabase
+        .from("bodyweight_logs")
+        .delete()
+        .eq("user_id", userId)
+        .eq("date", payload.date);
+      break;
   }
   if (result?.error) throw result.error;
 }
@@ -266,6 +274,77 @@ export async function syncAppStateToCloud(
   });
 }
 
+export async function syncCollectionsToCloud(
+  previous: StateSnapshot,
+  next: StateSnapshot,
+  userId: string,
+): Promise<void> {
+  const groups = [
+    {
+      key: "routines",
+      id: (item: any) => item.id,
+      upsert: "routine-upsert",
+      remove: "routine-delete",
+    },
+    {
+      key: "workoutsHistory",
+      id: (item: any) => item.id,
+      upsert: "workout-upsert",
+      remove: "workout-delete",
+    },
+    {
+      key: "bodyweightLogs",
+      id: (item: any) => item.date,
+      upsert: "bodyweight-upsert",
+      remove: "bodyweight-delete",
+    },
+  ] as const;
+
+  for (const group of groups) {
+    const oldItems = new Map(
+      (previous[group.key] as any[]).map((item) => [group.id(item), item]),
+    );
+    const newItems = new Map(
+      (next[group.key] as any[]).map((item) => [group.id(item), item]),
+    );
+    for (const [id] of oldItems) {
+      if (!newItems.has(id)) {
+        await saveAndSyncMutation(
+          userId,
+          group.remove,
+          group.key === "bodyweightLogs" ? { date: id } : { id },
+        );
+      }
+    }
+    for (const [id, item] of newItems) {
+      if (JSON.stringify(oldItems.get(id)) === JSON.stringify(item)) continue;
+      const payload =
+        group.key === "routines"
+          ? {
+              id,
+              user_id: userId,
+              name: item.name,
+              emoji: item.emoji || "⚡",
+              progression: item.progression || "linear",
+              exercises: item.exercises || [],
+            }
+          : group.key === "workoutsHistory"
+            ? {
+                id,
+                user_id: userId,
+                routine_name: item.routineName || "Workout",
+                duration: item.duration,
+                volume: item.volume,
+                xp: item.xp,
+                date: item.date,
+                entries: item.entries || [],
+              }
+            : { date: item.date, weight: item.weight };
+      await saveAndSyncMutation(userId, group.upsert, payload);
+    }
+  }
+}
+
 let sessionRequest: Promise<string | null> | null = null;
 export function ensureUserSession(): Promise<string | null> {
   if (!sessionRequest)
@@ -296,36 +375,33 @@ export async function syncProfileToCloud(
   profile: any,
   stats: any,
   weekSchedule?: any,
+  expectedUserId?: string,
 ): Promise<void> {
-  try {
-    const userId = await ensureUserSession();
-    if (!userId) return;
+  const userId = expectedUserId ?? (await ensureUserSession());
+  if (!userId) throw new Error("No authenticated user for profile sync");
 
-    const payload: any = {
-      id: userId,
-      name: profile.name,
-      gender: profile.gender,
-      weight: profile.weight,
-      height: profile.height,
-      goal: profile.goal,
-      experience: profile.experience,
-      level: stats.level,
-      xp: stats.xp,
-      xp_to_next: stats.xpToNext,
-      streak: stats.streak,
-      is_pro: profile.isPro,
-      target_muscles: profile.targetMuscles || [],
-      updated_at: new Date().toISOString(),
-    };
+  const payload: any = {
+    id: userId,
+    name: profile.name,
+    gender: profile.gender,
+    weight: profile.weight,
+    height: profile.height,
+    goal: profile.goal,
+    experience: profile.experience,
+    level: stats.level,
+    xp: stats.xp,
+    xp_to_next: stats.xpToNext,
+    streak: stats.streak,
+    is_pro: profile.isPro,
+    target_muscles: profile.targetMuscles || [],
+    updated_at: new Date().toISOString(),
+  };
 
-    if (weekSchedule !== undefined) {
-      payload.week_schedule = weekSchedule;
-    }
-
-    await saveAndSyncMutation(userId, "profile", payload);
-  } catch {
-    // Non-blocking offline fallback
+  if (weekSchedule !== undefined) {
+    payload.week_schedule = weekSchedule;
   }
+
+  await saveAndSyncMutation(userId, "profile", payload);
 }
 
 export async function syncRoutineToCloud(routine: any): Promise<void> {

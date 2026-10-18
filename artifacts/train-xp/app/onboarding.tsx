@@ -8,6 +8,8 @@ import { Feather, FontAwesome } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { writeJson, removeStored } from "@/lib/storage";
 import {
   ActivityIndicator,
   Alert,
@@ -488,6 +490,7 @@ function FlameHeroSvg() {
 
 // Total number of onboarding steps (0 to 24 = 25 steps total)
 const TOTAL_STEPS = 24;
+const ONBOARDING_DRAFT_KEY = "@train-xp/onboarding-draft";
 
 export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
@@ -508,6 +511,7 @@ export default function OnboardingScreen() {
   const [step, setStep] = useState(0);
   const [showPaywall, setShowPaywall] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [routinePrepProgress, setRoutinePrepProgress] = useState(15);
 
@@ -563,6 +567,40 @@ export default function OnboardingScreen() {
     10: true,
   });
   const scrollRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!hydrated || hasOnboarded) return;
+    let cancelled = false;
+    void AsyncStorage.getItem(ONBOARDING_DRAFT_KEY)
+      .then((raw) => {
+        if (!raw || cancelled) return;
+        const draft = JSON.parse(raw);
+        if (
+          Number.isInteger(draft.step) &&
+          draft.step >= 0 &&
+          draft.step <= TOTAL_STEPS
+        )
+          setStep(draft.step);
+        if (
+          draft.profile &&
+          typeof draft.profile === "object" &&
+          !Array.isArray(draft.profile)
+        )
+          setProfile((current) => ({ ...current, ...draft.profile }));
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setDraftRestored(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, hasOnboarded]);
+
+  useEffect(() => {
+    if (!hydrated || hasOnboarded || !draftRestored) return;
+    void writeJson(ONBOARDING_DRAFT_KEY, { step, profile }).catch(() => undefined);
+  }, [hydrated, hasOnboarded, draftRestored, step, profile]);
 
   const handleDobChange = (
     { day, month, year }: { day: number; month: string; year: number }
@@ -783,6 +821,7 @@ export default function OnboardingScreen() {
     completionLock.current = true;
     setShowPaywall(false);
     completeOnboarding({ ...profile, isPro: savedProfile.isPro || isPro });
+    void removeStored(ONBOARDING_DRAFT_KEY);
     setTimeout(() => {
       router.replace("/(tabs)");
     }, 150);

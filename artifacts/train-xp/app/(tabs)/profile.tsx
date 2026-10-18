@@ -397,7 +397,7 @@ export default function ProfileScreen() {
               void Haptics.notificationAsync(
                 Haptics.NotificationFeedbackType.Success,
               );
-              router.replace("/");
+              router.replace("/onboarding");
             }),
         },
       ],
@@ -685,10 +685,12 @@ export default function ProfileScreen() {
             />
           </View>
 
-          {profile.authEmail ? (
+          {profile.authEmail || profile.authUserId ? (
             <View style={styles.authConnectedRow}>
               <View style={styles.authInfoCol}>
-                <Text style={styles.authEmailText}>{profile.authEmail}</Text>
+                <Text style={styles.authEmailText}>
+                  {profile.authEmail || profile.name || "Athlete"}
+                </Text>
                 <Text style={styles.authProviderBadge}>
                   {profile.authProvider === "apple"
                     ? " Apple ID"
@@ -699,7 +701,12 @@ export default function ProfileScreen() {
               </View>
               <Pressable
                 disabled={authBusy}
-                onPress={() => void runAuth(logoutAuth)}
+                onPress={() =>
+                  void runAuth(async () => {
+                    await logoutAuth();
+                    router.replace("/onboarding");
+                  })
+                }
                 style={styles.signOutBtn}
               >
                 <Text style={styles.signOutText}>
@@ -1305,8 +1312,9 @@ export default function ProfileScreen() {
                     <Pressable
                       onPress={() =>
                         void runAuth(async () => {
-                          await logoutAuth();
                           setShowSettingsModal(false);
+                          await logoutAuth();
+                          router.replace("/onboarding");
                         })
                       }
                       style={styles.logoutSmallBtn}

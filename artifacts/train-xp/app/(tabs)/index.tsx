@@ -151,12 +151,12 @@ export default function HomeScreen() {
           <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
             <Text style={styles.kicker}>{kickerText}</Text>
             <Text style={styles.greeting}>
-              {t.home.readyPrompt} {profile.name || "Lifter"}?
+              {t.home.readyPrompt} {profile.name}?
             </Text>
           </View>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>
-              {(profile.name || "L").charAt(0).toUpperCase()}
+              {profile.name.charAt(0).toUpperCase()}
             </Text>
           </View>
         </View>

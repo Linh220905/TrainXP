@@ -13,7 +13,9 @@ import { writeJson, removeStored } from "@/lib/storage";
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Dimensions,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -21,6 +23,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { LinearGradient as ExpoLinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, {
@@ -43,7 +46,6 @@ import {
 } from "@/components/DualMannequinFocusPicker";
 import { HorizontalRulerPicker } from "@/components/HorizontalRulerPicker";
 import { PaywallModal } from "@/components/PaywallModal";
-import { LoginModal } from "@/components/LoginModal";
 import { GoogleLogo } from "@/components/GoogleLogo";
 import {
   useAppState,
@@ -497,6 +499,7 @@ export default function OnboardingScreen() {
   const {
     hydrated,
     hasOnboarded,
+    isAuthenticated,
     completeOnboarding,
     loginGoogle,
     loginApple,
@@ -510,7 +513,7 @@ export default function OnboardingScreen() {
   // Navigation state
   const [step, setStep] = useState(0);
   const [showPaywall, setShowPaywall] = useState(false);
-  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [isLoginView, setIsLoginView] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [routinePrepProgress, setRoutinePrepProgress] = useState(15);
@@ -526,7 +529,7 @@ export default function OnboardingScreen() {
     savedLogs.length > 0 || savedHistory.length > 0 || savedProfile.username
       ? { ...savedProfile }
       : {
-          name: "Lifter",
+          name: "",
           unit: "Metric",
           weight: 68,
           height: 170,
@@ -553,7 +556,6 @@ export default function OnboardingScreen() {
           goalWeeks: 4,
           streakCommitment: 30,
           notificationsEnabled: false,
-          referralSource: "tiktok",
           isPro: false,
         },
   );
@@ -569,7 +571,7 @@ export default function OnboardingScreen() {
   const scrollRef = useRef<any>(null);
 
   useEffect(() => {
-    if (!hydrated || hasOnboarded) return;
+    if (!hydrated || hasOnboarded || draftRestored) return;
     let cancelled = false;
     void AsyncStorage.getItem(ONBOARDING_DRAFT_KEY)
       .then((raw) => {
@@ -595,7 +597,7 @@ export default function OnboardingScreen() {
     return () => {
       cancelled = true;
     };
-  }, [hydrated, hasOnboarded]);
+  }, [hydrated, hasOnboarded, draftRestored]);
 
   useEffect(() => {
     if (!hydrated || hasOnboarded || !draftRestored) return;
@@ -652,10 +654,19 @@ export default function OnboardingScreen() {
   }, [profile.benchPressPR, profile.prSquat, profile.deadliftPR]);
 
   useEffect(() => {
-    if (hydrated && hasOnboarded) {
+    if (hydrated && isAuthenticated && hasOnboarded) {
       router.replace("/(tabs)");
     }
-  }, [hydrated, hasOnboarded]);
+  }, [hydrated, isAuthenticated, hasOnboarded]);
+
+  useEffect(() => {
+    if (!isLoginView) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      setIsLoginView(false);
+      return true;
+    });
+    return () => sub.remove();
+  }, [isLoginView]);
 
   useEffect(() => {
     if (step !== 19) return;
@@ -680,7 +691,7 @@ export default function OnboardingScreen() {
     [profile],
   );
 
-  if (!hydrated || hasOnboarded)
+  if (!hydrated || (isAuthenticated && hasOnboarded))
     return (
       <View style={styles.loading}>
         <Text>{t.onboarding.loadingProfile}</Text>
@@ -817,6 +828,16 @@ export default function OnboardingScreen() {
   };
 
   const handleFinishOnboarding = (isPro = false) => {
+    if (!profile.name.trim()) {
+      setShowPaywall(false);
+      setStep(21);
+      Alert.alert(t.onboarding.checkProfileTitle, t.onboarding.checkProfileMsg);
+      return;
+    }
+    if (!isAuthenticated) {
+      setStep(23);
+      return;
+    }
     if (completionLock.current) return;
     completionLock.current = true;
     setShowPaywall(false);
@@ -838,7 +859,12 @@ export default function OnboardingScreen() {
         provider === "apple" ? await loginApple() : await loginGoogle();
       if (!signedIn) return;
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setStep(TOTAL_STEPS);
+      if (isLoginView) {
+        setIsLoginView(false);
+        setStep(1);
+      } else {
+        setStep(TOTAL_STEPS);
+      }
     } catch (error) {
       Alert.alert(
         t.onboarding.signInFailedTitle,
@@ -872,7 +898,12 @@ export default function OnboardingScreen() {
       const ok = await loginPassword(trimmedId, trimmedPass);
       if (ok) {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setStep(TOTAL_STEPS);
+        if (isLoginView) {
+          setIsLoginView(false);
+          setStep(1);
+        } else {
+          setStep(TOTAL_STEPS);
+        }
       } else {
         throw new Error(t.onboarding.incorrectCredentialsMsg);
       }
@@ -922,26 +953,298 @@ export default function OnboardingScreen() {
             ? t.onboarding.skipAndContinue
             : t.onboarding.continue;
 
+  // Screen for existing users logging in directly from the welcome screen
+  if (isLoginView) {
+    return (
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={[
+          styles.screen,
+          {
+            backgroundColor: BLUE_THEME.bgDark,
+            paddingTop: insets.top + 6,
+          },
+        ]}
+      >
+        <StatusBar style="light" />
+        <ExpoLinearGradient
+          colors={["#0D2133", "#090D16", "#090D16"]}
+          locations={[0, 0.62, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+
+        {/* Top Navigation Header with Back Arrow */}
+        <View style={styles.navHeader}>
+          <Pressable
+            onPress={() => {
+              void Haptics.selectionAsync().catch(() => undefined);
+              setIsLoginView(false);
+            }}
+            style={styles.backButton}
+            hitSlop={12}
+            accessibilityRole="button"
+          >
+            <Feather name="chevron-left" size={24} color={BLUE_THEME.white} />
+          </Pressable>
+          <View style={{ flex: 1, alignItems: "center" }}>
+            <Text
+              style={{ fontSize: 16, fontWeight: "700", color: "#FFFFFF" }}
+            >
+              {t.onboarding.signInTitle}
+            </Text>
+          </View>
+          <View style={styles.backPlaceholder} />
+        </View>
+
+        {/* Main Login Content */}
+        <KeyboardAwareScrollViewCompat
+          ref={scrollRef}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom, 24) + 20 },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.stepContainer}>
+            <View
+              style={{
+                alignItems: "center",
+                marginBottom: 28,
+                marginTop: 12,
+              }}
+            >
+              <Image
+                source={require("@/assets/images/icon.png")}
+                style={{
+                  width: 68,
+                  height: 68,
+                  borderRadius: 18,
+                  marginBottom: 16,
+                }}
+              />
+              <Text style={styles.mainTitle}>{t.onboarding.signInTitle}</Text>
+              <Text
+                style={{
+                  fontSize: 14,
+                  color: "#94A3B8",
+                  marginTop: 6,
+                  textAlign: "center",
+                  paddingHorizontal: 20,
+                  lineHeight: 20,
+                }}
+              >
+                {t.onboarding.signInSubtitle}
+              </Text>
+            </View>
+
+            {/* Account Input 1: Username / Email */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>
+                {t.onboarding.usernameOrEmail}
+              </Text>
+              <View style={styles.inputContainer}>
+                <Feather
+                  name="user"
+                  size={18}
+                  color="#64748B"
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={styles.loginTextInput}
+                  value={loginIdentifier}
+                  onChangeText={setLoginIdentifier}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  returnKeyType="next"
+                  editable={!authLoading}
+                  placeholder="email@example.com"
+                  placeholderTextColor="#475569"
+                />
+              </View>
+            </View>
+
+            {/* Account Input 2: Password */}
+            <View style={[styles.fieldGroup, { marginTop: 14 }]}>
+              <Text style={styles.fieldLabel}>
+                {t.onboarding.passwordLabel}
+              </Text>
+              <View style={styles.inputContainer}>
+                <Feather
+                  name="lock"
+                  size={18}
+                  color="#64748B"
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={styles.loginTextInput}
+                  value={loginPasswordInput}
+                  onChangeText={setLoginPasswordInput}
+                  secureTextEntry={!showLoginPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  onSubmitEditing={handlePasswordLogin}
+                  editable={!authLoading}
+                  placeholder="••••••••"
+                  placeholderTextColor="#475569"
+                />
+                <Pressable
+                  onPress={() => setShowLoginPassword(!showLoginPassword)}
+                  hitSlop={10}
+                  style={styles.eyeBtn}
+                >
+                  <Feather
+                    name={showLoginPassword ? "eye" : "eye-off"}
+                    size={18}
+                    color="#64748B"
+                  />
+                </Pressable>
+              </View>
+            </View>
+
+            {/* Submit Password Login Button */}
+            <Pressable
+              onPress={handlePasswordLogin}
+              disabled={authLoading}
+              style={({ pressed }) => [
+                styles.submitBtn,
+                pressed && styles.btnPressed,
+                authLoading && styles.btnDisabled,
+              ]}
+            >
+              <ExpoLinearGradient
+                colors={["#38BDF8", "#0284C7"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.submitBtnGradient}
+              >
+                {loginSubmitting ? (
+                  <ActivityIndicator size="small" color="#04121F" />
+                ) : (
+                  <>
+                    <Text style={styles.submitBtnText}>
+                      {t.onboarding.signInBtn}
+                    </Text>
+                    <Feather name="arrow-right" size={18} color="#04121F" />
+                  </>
+                )}
+              </ExpoLinearGradient>
+            </Pressable>
+
+            {/* Divider */}
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>
+                {t.onboarding.orContinueWith}
+              </Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* 2 Big Social Login Cards */}
+            <View style={{ gap: 12 }}>
+              {/* Google Big Card */}
+              <Pressable
+                disabled={authLoading}
+                onPress={() => void handleExistingAccountLogin("google")}
+                style={({ pressed }) => [
+                  styles.socialAuthBtnLarge,
+                  styles.googleAuthCard,
+                  pressed && styles.btnPressed,
+                  authLoading && styles.btnDisabled,
+                ]}
+              >
+                <View style={styles.socialIconBox}>
+                  <GoogleLogo size={22} />
+                </View>
+                <Text style={styles.socialAuthLargeText}>
+                  {t.onboarding.continueWithGoogle}
+                </Text>
+              </Pressable>
+
+              {/* Apple Big Card */}
+              {Platform.OS === "ios" && (
+                <Pressable
+                  disabled={authLoading}
+                  onPress={() => void handleExistingAccountLogin("apple")}
+                  style={({ pressed }) => [
+                    styles.socialAuthBtnLarge,
+                    styles.appleAuthCard,
+                    pressed && styles.btnPressed,
+                    authLoading && styles.btnDisabled,
+                  ]}
+                >
+                  <View style={styles.socialIconBox}>
+                    <FontAwesome name="apple" size={22} color="#FFFFFF" />
+                  </View>
+                  <Text style={styles.socialAuthLargeText}>
+                    {t.onboarding.continueWithApple}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+
+            {/* Switch to Start Onboarding */}
+            <View
+              style={{
+                alignItems: "center",
+                marginTop: 28,
+                marginBottom: 12,
+              }}
+            >
+              <Pressable
+                onPress={() => {
+                  void Haptics.selectionAsync().catch(() => undefined);
+                  setIsLoginView(false);
+                  setStep(1);
+                }}
+                hitSlop={10}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <Text style={{ fontSize: 14, color: "#94A3B8" }}>
+                  {locale === "vi"
+                    ? "Chưa có tài khoản?"
+                    : "Don't have an account?"}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: "700",
+                    color: "#38BDF8",
+                  }}
+                >
+                  {locale === "vi" ? "Bắt đầu ngay" : "Get Started"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAwareScrollViewCompat>
+      </KeyboardAvoidingView>
+    );
+  }
+
   // The welcome carousel has its own layout; profile questions begin at step 1.
   if (step === 0) {
     return (
-      <>
-        <WelcomeScreen
-          index={carouselIndex}
-          onIndexChange={setCarouselIndex}
-          onContinue={next}
-          onSkip={() => {
-            void Haptics.selectionAsync().catch(() => undefined);
-            setStep(1);
-          }}
-          onLogin={() => setShowLoginModal(true)}
-          loading={authLoading}
-        />
-        <LoginModal
-          visible={showLoginModal}
-          onClose={() => setShowLoginModal(false)}
-        />
-      </>
+      <WelcomeScreen
+        index={carouselIndex}
+        onIndexChange={setCarouselIndex}
+        onContinue={next}
+        onSkip={() => {
+          void Haptics.selectionAsync().catch(() => undefined);
+          setStep(1);
+        }}
+        onLogin={() => {
+          void Haptics.selectionAsync().catch(() => undefined);
+          setIsLoginView(true);
+        }}
+        loading={authLoading}
+      />
     );
   }
 
@@ -950,7 +1253,7 @@ export default function OnboardingScreen() {
     return (
       <View style={[styles.screen, { backgroundColor: BLUE_THEME.bgDark }]}>
         <BiometricFingerprintConfirm
-          userName={profile.name || t.onboarding.defaultWarriorName}
+          userName={profile.name || "Lifter"}
           onConfirmed={next}
           onBack={back}
           streakGoalDays={profile.streakCommitment || 30}
@@ -2196,7 +2499,7 @@ export default function OnboardingScreen() {
                 <Feather name="shield" size={36} color="#38BDF8" />
               </ExpoLinearGradient>
               <Text style={styles.profileHeroCaption}>
-                {profile.name?.trim() || t.onboarding.defaultWarriorName}
+                {profile.name.trim() || "Lifter"}
               </Text>
             </View>
 
@@ -2500,12 +2803,6 @@ export default function OnboardingScreen() {
         onClose={() => handleFinishOnboarding(false)}
         onSubscribe={(_plan) => handleFinishOnboarding(true)}
         onSuccess={() => handleFinishOnboarding(true)}
-      />
-
-      {/* Tester & Existing Account Login Modal */}
-      <LoginModal
-        visible={showLoginModal}
-        onClose={() => setShowLoginModal(false)}
       />
     </KeyboardAvoidingView>
   );

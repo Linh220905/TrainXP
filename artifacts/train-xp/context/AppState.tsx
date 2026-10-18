@@ -19,7 +19,6 @@ import {
   syncAppStateToCloud,
   syncCollectionsToCloud,
   syncProfileToCloud,
-  ensureUserSession,
   supabase,
 } from "@/lib/supabase";
 import { type MuscleSlug, musclesOf } from "@/lib/muscles";
@@ -154,6 +153,7 @@ export interface WorkoutResult {
 
 interface AppStateValue {
   hydrated: boolean;
+  isAuthenticated: boolean;
   syncStatus: "local" | "syncing" | "synced" | "error";
   retrySync: () => Promise<void>;
   hasOnboarded: boolean;
@@ -361,15 +361,16 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     const key = storageKey.current,
       userId = activeUser.current,
       version = generation.current;
+    if (!userId) return Promise.resolve();
     return writeJson(key, next)
       .then(async () => {
         if (version !== generation.current || !mounted.current) return;
         if (userId) {
           setSyncStatus("syncing");
-          if (next.hasOnboarded)
-            await syncProfileToCloud(next.profile, next.stats, undefined, userId);
           await syncAppStateToCloud(next, userId);
           if (previous) await syncCollectionsToCloud(previous, next, userId);
+          if (next.hasOnboarded)
+            await syncProfileToCloud(next.profile, next.stats, undefined, userId);
           if (version === generation.current && mounted.current)
             setSyncStatus("synced");
         } else setSyncStatus("local");
@@ -470,9 +471,22 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     listenerCleanup.current = null;
     activeUser.current = userId;
     storageKey.current = userId ? `${STORAGE_KEY_PREFIX}${userId}` : GUEST_KEY;
+
+    if (!userId) {
+      publish({
+        ...initialState,
+        hasOnboarded: false,
+        profile: { ...defaultProfile },
+      });
+      ready.current = true;
+      setHydrated(true);
+      setSyncStatus("local");
+      return;
+    }
+
     publish({
       ...initialState,
-      profile: { ...defaultProfile, authUserId: userId ?? undefined },
+      profile: { ...defaultProfile, authUserId: userId },
     });
     let raw: string | null = null;
     try {
@@ -544,14 +558,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const retrySync = async () => {
     if (syncing.current) return syncing.current;
     const operation = (async () => {
-      const version = generation.current;
-      if (!activeUser.current) {
-        const id = await withTimeout(ensureUserSession());
-        if (id && mounted.current && version === generation.current)
-          await activate(id, false, current.current);
-        else if (mounted.current && version === generation.current)
-          await save(current.current);
-      } else await reconcile(activeUser.current, generation.current);
+      if (!activeUser.current) return;
+      await reconcile(activeUser.current, generation.current);
     })();
     syncing.current = operation;
     try {
@@ -569,15 +577,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     void (async () => {
       try {
         const { data } = await withTimeout(supabase.auth.getSession());
-        const id = data.session?.user.id ?? null;
-        if (!cancelled)
-          await activate(
-            id,
-            !!data.session?.user.is_anonymous || !data.session,
-          );
-        if (!id && !cancelled) void retrySync();
+        const user = data.session?.user;
+        if (user?.is_anonymous) {
+          await supabase.auth.signOut().catch(() => undefined);
+        }
+        const id = user && !user.is_anonymous ? user.id : null;
+        if (!cancelled) await activate(id);
       } catch {
-        if (!cancelled) await activate(null, true);
+        if (!cancelled) await activate(null);
       }
     })().catch(() => {
       if (!cancelled) {
@@ -681,8 +688,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       ].sort((a, b) => a.date.localeCompare(b.date)),
     }));
   };
-  const completeOnboarding = (input: Profile) =>
-    commit((s) => {
+  const completeOnboarding = (input: Profile) => {
+    if (!input.name.trim()) throw new Error("Display name is required");
+    return commit((s) => {
       const profile = {
         ...input,
         name: input.name.trim(),
@@ -696,8 +704,26 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         s.baselineXp === 0 &&
         !s.bodyweightLogs.length &&
         !s.workoutsHistory.length;
-      if (!firstTime) return { ...s, profile, hasOnboarded: true };
       const plan = generatePersonalizedPlan(profile);
+      if (!firstTime) {
+        const generatedIds = new Set([
+          "starter_push", "starter_pull", "starter_legs",
+          "routine_fb_a", "routine_fb_b",
+          "routine_push", "routine_pull", "routine_legs",
+          "routine_upper_a", "routine_lower_a", "routine_upper_b", "routine_lower_b",
+          "routine_p1", "routine_pu1", "routine_l1", "routine_up_x", "routine_low_x",
+        ]);
+        return {
+          ...s,
+          profile,
+          hasOnboarded: true,
+          routines: [
+            ...s.routines.filter((routine) => !generatedIds.has(routine.id)),
+            ...plan.routines,
+          ],
+          weekSchedule: plan.weekSchedule,
+        };
+      }
       return {
         ...s,
         profile,
@@ -721,6 +747,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             ],
       };
     });
+  };
   const resetOnboarding = async () => {
     const next = commit((s) => ({ ...s, hasOnboarded: false }));
     await writeJson(storageKey.current, next);
@@ -758,7 +785,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         ...s,
         profile: {
           ...s.profile,
-          name: user.fullName || s.profile.name,
           authUserId: user.id,
           authEmail: user.email,
           authProvider: provider,
@@ -785,7 +811,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         ...s,
         profile: {
           ...s.profile,
-          name: user.fullName || s.profile.name,
           authUserId: user.id,
           authEmail: user.email,
           authProvider: "email",
@@ -801,13 +826,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     if (authLock.current) return;
     authLock.current = true;
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      await liveActivity.endActivity();
+      await supabase.auth.signOut().catch(() => undefined);
+      await liveActivity.endActivity().catch(() => undefined);
+      await logOutPurchases().catch(() => undefined);
+      await removeStored(GUEST_KEY).catch(() => undefined);
+      await removeStored(LEGACY_STORAGE_KEY).catch(() => undefined);
+      await removeStored("@train-xp/onboarding-draft").catch(() => undefined);
       await activate(null);
-      await logOutPurchases();
-      const id = await withTimeout(ensureUserSession());
-      if (id) await activate(id, false, current.current);
     } finally {
       authLock.current = false;
     }
@@ -828,9 +853,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       if (id) await clearCloudOutboxForUser(id);
       await removeStored(key);
       if (id) await removeStored(`@train-xp/workout-draft:${id}`);
-      await liveActivity.endActivity();
+      await liveActivity.endActivity().catch(() => undefined);
+      await logOutPurchases().catch(() => undefined);
+      await removeStored(GUEST_KEY).catch(() => undefined);
+      await removeStored(LEGACY_STORAGE_KEY).catch(() => undefined);
+      await removeStored("@train-xp/onboarding-draft").catch(() => undefined);
       await activate(null);
-      await logOutPurchases();
     } catch (error) {
       ready.current = true;
       publish(before);
@@ -908,10 +936,18 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       rankedUp: next.stats.level > oldStats.level,
     };
   };
+  const isAuthenticated = useMemo(() => {
+    return Boolean(
+      activeUser.current &&
+        snapshot.profile.authUserId &&
+        snapshot.profile.authProvider,
+    );
+  }, [snapshot.profile.authUserId, snapshot.profile.authProvider]);
   const value = useMemo<AppStateValue>(
     () => ({
       ...snapshot,
       hydrated,
+      isAuthenticated,
       syncStatus,
       retrySync,
       addRoutine,
@@ -932,7 +968,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       deleteWorkout,
       finishWorkout,
     }),
-    [snapshot, hydrated, syncStatus],
+    [snapshot, hydrated, isAuthenticated, syncStatus],
   );
   return (
     <AppStateContext.Provider value={value}>

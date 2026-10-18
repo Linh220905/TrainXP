@@ -204,6 +204,11 @@ async function saveAndSyncMutation(
     payload,
   };
   await updateOutbox((items) => {
+    if (kind === "profile")
+      return [
+        ...items.filter((item) => item.userId !== userId || item.kind !== kind),
+        mutation,
+      ];
     if (kind !== "app-state-upsert") return [...items, mutation];
     const older = items.filter(
       (item) => item.userId === userId && item.kind === kind,
@@ -226,7 +231,12 @@ async function saveAndSyncMutation(
       { ...mutation, payload: { ...payload, state } },
     ];
   });
-  await replayCloudOutbox(userId);
+  try {
+    await replayCloudOutbox(userId);
+  } catch (error) {
+    // Other queued tables can fail independently after this mutation succeeds.
+    if ((await readOutbox()).some((item) => item.id === mutation.id)) throw error;
+  }
 }
 
 export async function replayCloudOutbox(expectedUserId: string): Promise<void> {
@@ -237,17 +247,26 @@ export async function replayCloudOutbox(expectedUserId: string): Promise<void> {
       const { data } = await supabase.auth.getSession();
       if (data.session?.user.id !== expectedUserId)
         throw new Error("Cloud identity changed");
-      const items = await readOutbox();
+      // A profile table error must not block the complete onboarding snapshot.
+      const items = (await readOutbox()).sort(
+        (a, b) => Number(b.kind === "app-state-upsert") - Number(a.kind === "app-state-upsert"),
+      );
+      let firstError: unknown;
       for (const mutation of items) {
         if (mutation.userId !== expectedUserId) continue;
         const { data: session } = await supabase.auth.getSession();
         if (session.session?.user.id !== expectedUserId)
           throw new Error("Cloud identity changed");
-        await executeCloudMutation(mutation);
-        await updateOutbox((current) =>
-          current.filter((item) => item.id !== mutation.id),
-        );
+        try {
+          await executeCloudMutation(mutation);
+          await updateOutbox((current) =>
+            current.filter((item) => item.id !== mutation.id),
+          );
+        } catch (error) {
+          firstError ??= error;
+        }
       }
+      if (firstError) throw firstError;
     });
   cloudWriteLock = operation.catch(() => undefined);
   await operation;
@@ -358,14 +377,14 @@ async function createUserSession(): Promise<string | null> {
     const {
       data: { session },
     } = await supabase.auth.getSession();
-    if (session?.user?.id) {
+    if (session?.user) {
+      if (session.user.is_anonymous) {
+        await supabase.auth.signOut().catch(() => undefined);
+        return null;
+      }
       return session.user.id;
     }
-    const { data, error } = await supabase.auth.signInAnonymously();
-    if (error) {
-      return null;
-    }
-    return data?.user?.id ?? null;
+    return null;
   } catch {
     return null;
   }
@@ -378,7 +397,7 @@ export async function syncProfileToCloud(
   expectedUserId?: string,
 ): Promise<void> {
   const userId = expectedUserId ?? (await ensureUserSession());
-  if (!userId) throw new Error("No authenticated user for profile sync");
+  if (!userId) return;
 
   const payload: any = {
     id: userId,
@@ -522,7 +541,17 @@ export async function fetchCloudUserData(expectedUserId?: string): Promise<{
     if (!appStateRes.error && appStateRes.data?.state)
       result.appState = appStateRes.data.state;
 
-    if (profileRes.data) {
+    // OAuth may create a name-only profile before the survey is completed.
+    // Only a previously saved survey can serve as the legacy fallback.
+    if (
+      profileRes.data &&
+      typeof profileRes.data.goal === "string" &&
+      typeof profileRes.data.experience === "string" &&
+      Number.isFinite(Number(profileRes.data.weight)) &&
+      Number(profileRes.data.weight) >= 15 &&
+      Number.isFinite(Number(profileRes.data.height)) &&
+      Number(profileRes.data.height) >= 80
+    ) {
       const p = profileRes.data;
       result.profile = {
         name: p.name,

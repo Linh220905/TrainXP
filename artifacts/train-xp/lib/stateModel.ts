@@ -151,8 +151,10 @@ export function normalizeSnapshot(
     else if (typeof fallback === "string" && typeof value === "string")
       (profile as any)[key] = value;
   }
-  for (const key of ["username", "authEmail", "authUserId"] as const)
+  for (const key of ["username", "referralSource", "authEmail", "authUserId"] as const)
     if (typeof incoming[key] === "string") profile[key] = incoming[key];
+  if (typeof incoming.rating === "number" && Number.isFinite(incoming.rating))
+    profile.rating = incoming.rating;
   profile.authProvider =
     incoming.authProvider === "apple" ||
     incoming.authProvider === "google" ||

@@ -104,6 +104,19 @@ export async function signInWithGoogle(): Promise<AuthUser | null> {
     const hashParams = new URLSearchParams(hash);
     const queryParams = new URLSearchParams(parsedUrl.search);
 
+    // Supabase redirects back to the app with error details when the provider
+    // rejects the sign-in. Surface those details instead of hiding the cause.
+    const callbackError =
+      hashParams.get("error") || queryParams.get("error") ||
+      hashParams.get("error_code") || queryParams.get("error_code");
+    if (callbackError) {
+      const description =
+        hashParams.get("error_description") ||
+        queryParams.get("error_description") ||
+        callbackError;
+      throw new Error(`Google sign-in failed: ${description}`);
+    }
+
     const accessToken = hashParams.get("access_token") || queryParams.get("access_token");
     const refreshToken = hashParams.get("refresh_token") || queryParams.get("refresh_token");
     const code = queryParams.get("code") || hashParams.get("code");
@@ -123,7 +136,9 @@ export async function signInWithGoogle(): Promise<AuthUser | null> {
       if (setErr) throw setErr;
       sessionUser = setRes?.user;
     } else {
-      throw new Error("Google did not return a session. Check the Supabase redirect URL.");
+      throw new Error(
+        "Google returned to the app without an auth code or tokens. Check Supabase Auth logs for the callback error.",
+      );
     }
 
     if (!sessionUser) {

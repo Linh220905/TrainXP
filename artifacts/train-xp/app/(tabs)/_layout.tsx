@@ -8,7 +8,7 @@ import { useI18n } from "@/lib/i18n";
 import { useAppState } from "@/context/AppState";
 
 export default function TabLayout() {
-  const { hydrated, hasOnboarded } = useAppState();
+  const { hydrated, hasOnboarded, isAuthenticated } = useAppState();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
@@ -28,7 +28,7 @@ export default function TabLayout() {
     );
   }
 
-  if (!hasOnboarded) {
+  if (!isAuthenticated || !hasOnboarded) {
     return <Redirect href="/onboarding" />;
   }
 

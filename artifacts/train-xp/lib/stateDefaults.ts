@@ -1,6 +1,6 @@
 import type { Profile, PlayerStats } from "@/context/AppState";
 export const defaultProfile: Profile = {
-  name: "Lifter",
+  name: "",
   unit: "Metric",
   weight: 68,
   height: 170,

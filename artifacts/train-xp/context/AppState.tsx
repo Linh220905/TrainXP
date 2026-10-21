@@ -473,11 +473,16 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     storageKey.current = userId ? `${STORAGE_KEY_PREFIX}${userId}` : GUEST_KEY;
 
     if (!userId) {
-      publish({
-        ...initialState,
-        hasOnboarded: false,
-        profile: { ...defaultProfile },
-      });
+      let guestState = initialState;
+      try {
+        const rawGuestState = await AsyncStorage.getItem(GUEST_KEY);
+        if (rawGuestState)
+          guestState = normalizeSnapshot(JSON.parse(rawGuestState), initialState);
+      } catch {
+        // A malformed or unavailable guest cache should not block local use.
+      }
+      if (generation.current !== version || !mounted.current) return;
+      publish(guestState);
       ready.current = true;
       setHydrated(true);
       setSyncStatus("local");

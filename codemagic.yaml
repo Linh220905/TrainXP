@@ -12,7 +12,9 @@ workflows:
       groups:
         - app_store_credentials
       vars:
-        EXPO_PUBLIC_REVENUECAT_APPLE_KEY: "appl_ewZBuGVynrAWHYczmwxNOfpXrhF"
+        EXPO_PUBLIC_REVENUECAT_APPLE_KEY: "appl_cCAlWwoDAlZKeNpvwVuZmpSEvtO"
+        EXPO_PUBLIC_SUPABASE_URL: "https://nmnqmpjpczvoxauyosbv.supabase.co"
+        EXPO_PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tbnFtcGpwY3p2b3hhdXlvc2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3ODU5NjAsImV4cCI6MjEwNzM2MTk2MH0.D3qnHPiF8A5ttd2eqor8pl-t8gJ9TLg_duIEB7DD_K4"
         EXPO_PUBLIC_EXERCISE_CDN_URL: "https://pub-33f6c627cce748718337116d780396be.r2.dev"
       node: 20
       xcode: latest
@@ -24,6 +26,9 @@ workflows:
             npm install -g pnpm@9 --force
           fi
           pnpm install --no-frozen-lockfile
+      - name: Verify Supabase and RevenueCat
+        script: |
+          node scripts/check-release-services.mjs
       - name: Expo prebuild (Generate native iOS project)
         script: |
           cd artifacts/train-xp
@@ -37,19 +42,27 @@ workflows:
           xcode-project use-profiles
       - name: Build IPA
         script: |
+          set -e
           cd artifacts/train-xp/ios
           xcode-project build-ipa \
             --workspace *.xcworkspace \
             --scheme TrainXP
-          # Copy generated IPA to repo root for Codemagic artifacts collection
-          find . -name "*.ipa" -exec cp {} "$CM_BUILD_DIR/" \; || true
-          find /Users/builder/export -name "*.ipa" -exec cp {} "$CM_BUILD_DIR/" \; || true
-          ls -la "$CM_BUILD_DIR"/*.ipa || true
+          ipa_dir="$CM_BUILD_DIR/artifacts/train-xp/ios/build/ios/ipa"
+          if [ ! -d "$ipa_dir" ] || [ -z "$(find "$ipa_dir" -maxdepth 1 -type f -name '*.ipa' -print -quit)" ]; then
+            echo "Xcode finished without creating an IPA in $ipa_dir" >&2
+            exit 1
+          fi
+          find "$ipa_dir" -maxdepth 1 -type f -name '*.ipa' -print
+      - name: Validate IPA before upload
+        script: |
+          set -e
+          ipa_dir="$CM_BUILD_DIR/artifacts/train-xp/ios/build/ios/ipa"
+          ipa_path=$(find "$ipa_dir" -maxdepth 1 -type f -name '*.ipa' -print -quit)
+          test -n "$ipa_path"
+          python3 "$CM_BUILD_DIR/scripts/validate-ios-ipa.py" "$ipa_path"
     artifacts:
       - "artifacts/train-xp/ios/build/ios/ipa/*.ipa"
-      - "artifacts/train-xp/ios/**/*.ipa"
-      - "**/*.ipa"
-      - "/Users/builder/export/*.ipa"
+      - "/tmp/xcodebuild_logs/*.log"
     publishing:
       app_store_connect:
         auth: integration

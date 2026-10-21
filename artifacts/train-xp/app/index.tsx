@@ -8,7 +8,7 @@ import { useAppState } from "@/context/AppState";
  * Directs traffic between Onboarding and Main Tabs based on persisted hydration status.
  */
 export default function RootIndexGate() {
-  const { hydrated, hasOnboarded, isAuthenticated } = useAppState();
+  const { hydrated, hasOnboarded } = useAppState();
 
   if (!hydrated) {
     return (
@@ -25,7 +25,7 @@ export default function RootIndexGate() {
     );
   }
 
-  if (isAuthenticated && hasOnboarded) {
+  if (hasOnboarded) {
     return <Redirect href="/(tabs)" />;
   }
 

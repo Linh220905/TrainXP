@@ -1,4 +1,4 @@
-import { toggleFocus } from "@/lib/input";
+import { ageOn, toggleFocus } from "@/lib/input";
 import {
   formatWeight,
   weightUnitLabel,
@@ -459,13 +459,35 @@ export default function ProfileScreen() {
     if (!profile.height || !profile.weight || profile.height < 100) return null;
     const hM = profile.height / 100;
     const bmiVal = Number((profile.weight / (hM * hM)).toFixed(1));
+    const age = ageOn(profile.birthYear, profile.birthMonth, profile.birthDay);
+    if (age === null || age < 20) return { bmi: bmiVal, category: null };
     let cat = t.profile.bmiNormal;
     if (bmiVal < 18.5) cat = t.profile.bmiUnderweight;
     else if (bmiVal < 25) cat = t.profile.bmiNormal;
     else if (bmiVal < 30) cat = t.profile.bmiOverweight;
     else cat = t.profile.bmiObese;
     return { bmi: bmiVal, category: cat };
-  }, [profile.height, profile.weight, t.profile]);
+  }, [
+    profile.height,
+    profile.weight,
+    profile.birthYear,
+    profile.birthMonth,
+    profile.birthDay,
+    t.profile,
+  ]);
+
+  const showBmiInfo = () => {
+    Alert.alert(t.profile.bmiInfoTitle, t.profile.bmiInfoBody, [
+      { text: t.common.cancel, style: "cancel" },
+      {
+        text: t.profile.bmiInfoSource,
+        onPress: () =>
+          void Linking.openURL("https://www.cdc.gov/bmi/about/").catch(() =>
+            Alert.alert(t.profile.bmiInfoTitle, t.profile.bmiInfoLinkError),
+          ),
+      },
+    ]);
+  };
 
   const TOTAL_BARS = 22;
   const xpNeeded = stats.xpToNext || 500;
@@ -567,7 +589,16 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.bioDivider} />
             <View style={styles.bioItem}>
-              <Text style={styles.bioLabel}>BMI</Text>
+              <Pressable
+                onPress={showBmiInfo}
+                accessibilityRole="button"
+                accessibilityLabel={t.profile.bmiInfoTitle}
+                hitSlop={8}
+                style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+              >
+                <Text style={styles.bioLabel}>BMI</Text>
+                <Feather name="info" size={11} color={THEME.textMuted} />
+              </Pressable>
               <Text style={styles.bioValue}>
                 {bmiInfo ? `${bmiInfo.bmi}` : "--"}
                 {bmiInfo?.category ? (

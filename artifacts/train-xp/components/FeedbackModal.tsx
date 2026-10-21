@@ -89,7 +89,7 @@ export function FeedbackModal({
       "Feedback";
     const subject = `[TrainXP Feedback] ${categoryName}`;
     const body = `${content.trim()}\n\n---\n${deviceDiagnostics}`;
-    const mailtoUrl = `mailto:support@trainxp.app?subject=${encodeURIComponent(
+    const mailtoUrl = `mailto:support@calgo.tech?subject=${encodeURIComponent(
       subject,
     )}&body=${encodeURIComponent(body)}`;
 

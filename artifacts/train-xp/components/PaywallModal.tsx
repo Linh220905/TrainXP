@@ -220,9 +220,10 @@ export function PaywallModal({
   const isTrialSelected = Boolean(offerings?.[selectedPlan]?.hasTrial);
 
   const proFeatures = [
-    { icon: "calendar", title: t.paywall.feature1 },
-    { icon: "activity", title: t.paywall.feature3 },
-    { icon: "zap", title: t.paywall.feature4 },
+    { icon: "list", title: t.paywall.feature1 },
+    { icon: "image", title: t.paywall.feature2 },
+    { icon: "calendar", title: t.paywall.feature3 },
+    { icon: "bar-chart-2", title: t.paywall.feature4 },
   ] as const;
 
   return (
@@ -289,7 +290,7 @@ export function PaywallModal({
             <Text style={styles.heroSubtitle}>{t.paywall.heroSubtitle}</Text>
           </View>
 
-          {/* 3. Comprehensive Feature Highlights (4 Key Pillars) */}
+          {/* 3. Four core TrainXP Pro benefits */}
           <View style={styles.featureBox}>
             {proFeatures.map((feat, idx) => (
               <View key={idx} style={styles.featureRow}>

@@ -2367,6 +2367,7 @@ export default function OnboardingScreen() {
                 },
               )}
             </View>
+
           </View>
         ) : /* ================= STEP 19: routinePrep (Animated Routine Generator) ================= */
         step === 19 ? (
@@ -2667,6 +2668,37 @@ export default function OnboardingScreen() {
                   </Text>
                 </Pressable>
               )}
+            </View>
+
+            <View style={{ alignItems: "center", marginTop: 22, gap: 8 }}>
+              <Pressable
+                onPress={() => setStep(24)}
+                accessibilityRole="button"
+                style={({ pressed }) => ({
+                  opacity: pressed ? 0.75 : 1,
+                  padding: 8,
+                })}
+              >
+                <Text
+                  style={{
+                    color: BLUE_THEME.primary,
+                    fontWeight: "700",
+                    textAlign: "center",
+                  }}
+                >
+                  {t.onboarding.guestContinue}
+                </Text>
+              </Pressable>
+              <Text
+                style={{
+                  color: BLUE_THEME.subText,
+                  fontSize: 12,
+                  lineHeight: 18,
+                  textAlign: "center",
+                }}
+              >
+                {t.onboarding.guestContinueNotice}
+              </Text>
             </View>
           </View>
         ) : /* ================= STEP 24: youAreReady (Celebration & Soft Paywall CTA) ================= */

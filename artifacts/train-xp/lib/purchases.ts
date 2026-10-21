@@ -175,6 +175,17 @@ export async function fetchOfferings(): Promise<{
         weekly: fallbackWeekly,
       };
     }
+    if (!trainXpOffering.availablePackages.length) {
+      console.warn(
+        "[Purchases] TrainXP offering has no packages configured:",
+        TRAINXP_OFFERING_ID,
+      );
+      return {
+        annual: fallbackAnnual,
+        monthly: fallbackMonthly,
+        weekly: fallbackWeekly,
+      };
+    }
 
     const findPackage = (
       type: "annual" | "monthly" | "weekly",
@@ -186,23 +197,18 @@ export async function fetchOfferings(): Promise<{
         list.find((p) => {
           const id = (p.identifier || "").toLowerCase();
           const prodId = (p.product?.identifier || "").toLowerCase();
+          const identifiers = `${id} ${prodId}`;
           if (type === "annual")
             return (
-              id.includes("annual") ||
-              id.includes("year") ||
-              prodId.includes("year")
+              identifiers.includes("annual") || identifiers.includes("year")
             );
           if (type === "monthly")
             return (
-              id.includes("monthly") ||
-              id.includes("month") ||
-              prodId.includes("month")
+              identifiers.includes("monthly") || identifiers.includes("month")
             );
           if (type === "weekly")
             return (
-              id.includes("weekly") ||
-              id.includes("week") ||
-              prodId.includes("week")
+              identifiers.includes("weekly") || identifiers.includes("week")
             );
           return false;
         }) || null

@@ -364,6 +364,10 @@ export interface TranslationDictionary {
     bmiNormal: string;
     bmiOverweight: string;
     bmiObese: string;
+    bmiInfoTitle: string;
+    bmiInfoBody: string;
+    bmiInfoSource: string;
+    bmiInfoLinkError: string;
     genderLabel: string;
     genderFemale: string;
     genderMale: string;
@@ -775,6 +779,8 @@ export interface TranslationDictionary {
     continueWithGoogle: string;
     continueWithApple: string;
     skipAndContinue: string;
+    guestContinue: string;
+    guestContinueNotice: string;
     months: Record<string, string>;
     dateOfBirthFmt: string;
     minAgeWarning: string;

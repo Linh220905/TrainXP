@@ -982,6 +982,8 @@ export const vi: TranslationDictionary = {
     downsellDesc:
       "Mở khóa phần thưởng XP Pro với gói năm. Giá và chu kỳ thanh toán được xác nhận trước khi mua.",
     downsellCta: "CHỌN GÓI NĂM",
+    downsellDiscountBadge: "ƯU ĐÃI GÓI NĂM",
+    downsellDiscountCta: "CHỌN GÓI NĂM ƯU ĐÃI",
     downsellDismiss: "Không, cảm ơn, tôi sẽ dùng bản thường",
     closePaywall: "Đóng paywall",
     plansUnavailableRetry: "Chưa tải được gói đăng ký. Hãy thử lại.",

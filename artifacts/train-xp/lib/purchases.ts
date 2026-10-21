@@ -16,6 +16,7 @@ export const PRIVACY_POLICY_URL = "https://trainxp.vercel.app/privacy";
 
 export const PRO_ENTITLEMENT_ID = "trainxp_pro";
 export const TRAINXP_OFFERING_ID = "trainxp_pro";
+export const TRAINXP_ANNUAL_DISCOUNT_PACKAGE_ID = "annual_discount";
 
 let isConfigured = false;
 let configuration: Promise<boolean> | null = null;
@@ -111,7 +112,7 @@ export async function logOutPurchases(): Promise<void> {
 }
 
 export interface PackageDisplay {
-  id: "annual" | "monthly" | "weekly";
+  id: "annual" | "annual_discount" | "monthly" | "weekly";
   rcPackage?: PurchasesPackage;
   title: string;
   priceString: string;
@@ -125,6 +126,7 @@ export interface PackageDisplay {
 
 export async function fetchOfferings(): Promise<{
   annual: PackageDisplay;
+  annualDiscount?: PackageDisplay;
   monthly: PackageDisplay;
   weekly: PackageDisplay;
 }> {
@@ -200,7 +202,9 @@ export async function fetchOfferings(): Promise<{
           const identifiers = `${id} ${prodId}`;
           if (type === "annual")
             return (
-              identifiers.includes("annual") || identifiers.includes("year")
+              !id.includes("discount") &&
+              !prodId.includes("discount") &&
+              (identifiers.includes("annual") || identifiers.includes("year"))
             );
           if (type === "monthly")
             return (
@@ -216,6 +220,12 @@ export async function fetchOfferings(): Promise<{
     };
 
     const rcAnnual = findPackage("annual", trainXpOffering.annual);
+    const rcAnnualDiscount =
+      trainXpOffering.availablePackages.find(
+        (pkg) =>
+          (pkg.identifier || "").toLowerCase() ===
+          TRAINXP_ANNUAL_DISCOUNT_PACKAGE_ID,
+      ) || null;
     const rcMonthly = findPackage("monthly", trainXpOffering.monthly);
     const rcWeekly = findPackage("weekly", trainXpOffering.weekly);
     console.info(
@@ -241,6 +251,21 @@ export async function fetchOfferings(): Promise<{
             hasTrial: false,
           }
         : fallbackAnnual,
+      annualDiscount: rcAnnualDiscount
+        ? {
+            id: "annual_discount",
+            rcPackage: rcAnnualDiscount,
+            title: rcAnnualDiscount.product.title || "Discounted Yearly Plan",
+            priceString: rcAnnualDiscount.product.priceString,
+            periodText: "/ year",
+            perMonthPrice: new Intl.NumberFormat(undefined, {
+              style: "currency",
+              currency: rcAnnualDiscount.product.currencyCode,
+            }).format(rcAnnualDiscount.product.price / 12),
+            badge: "ANNUAL DISCOUNT",
+            hasTrial: false,
+          }
+        : undefined,
       monthly: rcMonthly
         ? {
             id: "monthly",

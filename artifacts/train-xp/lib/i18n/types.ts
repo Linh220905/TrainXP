@@ -831,6 +831,8 @@ export interface TranslationDictionary {
     downsellTitle: string;
     downsellDesc: string;
     downsellCta: string;
+    downsellDiscountBadge: string;
+    downsellDiscountCta: string;
     downsellDismiss: string;
     closePaywall: string;
     plansUnavailableRetry: string;

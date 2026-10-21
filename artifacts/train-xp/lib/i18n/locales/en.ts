@@ -970,6 +970,8 @@ export const en: TranslationDictionary = {
     downsellDesc:
       "Unlock Pro XP rewards with the annual plan. Confirm the price and billing period before purchasing.",
     downsellCta: "CHOOSE ANNUAL PLAN",
+    downsellDiscountBadge: "SPECIAL ANNUAL DISCOUNT",
+    downsellDiscountCta: "GET DISCOUNTED YEARLY PLAN",
     downsellDismiss: "No thanks, continue with limited version",
     closePaywall: "Close paywall",
     plansUnavailableRetry: "Subscription plans are unavailable. Please retry.",

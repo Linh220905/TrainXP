@@ -74,6 +74,7 @@ export function PaywallModal({
   const [loading, setLoading] = useState(false);
   const [offerings, setOfferings] = useState<{
     annual: PackageDisplay;
+    annualDiscount?: PackageDisplay;
     monthly: PackageDisplay;
     weekly: PackageDisplay;
   } | null>(null);
@@ -133,6 +134,7 @@ export function PaywallModal({
 
   const handleContinue = async (
     plan: "annual" | "monthly" | "weekly" = selectedPlan,
+    packageOverride?: PackageDisplay,
   ) => {
     if (operationLock.current) return;
     operationLock.current = true;
@@ -140,7 +142,7 @@ export function PaywallModal({
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
-      const pkg = offerings ? offerings[plan] : null;
+      const pkg = packageOverride || (offerings ? offerings[plan] : null);
       if (!pkg?.rcPackage) {
         Alert.alert(
           t.paywall.purchaseError,
@@ -214,6 +216,7 @@ export function PaywallModal({
   };
 
   const annualPkg = offerings?.annual;
+  const annualDiscountPkg = offerings?.annualDiscount;
   const monthlyPkg = offerings?.monthly;
   const weeklyPkg = offerings?.weekly;
 
@@ -520,13 +523,20 @@ export function PaywallModal({
 
               <View style={styles.downsellOfferBox}>
                 <Text style={styles.downsellOfferBadge}>
-                  {t.paywall.bestValueBadge}
+                  {annualDiscountPkg
+                    ? t.paywall.downsellDiscountBadge
+                    : t.paywall.bestValueBadge}
                 </Text>
+                {annualDiscountPkg ? (
+                  <Text style={styles.downsellOfferOldPrice}>
+                    {annualPkg?.priceString || "—"} {t.paywall.perYear}
+                  </Text>
+                ) : null}
                 <Text style={styles.downsellOfferPrice}>
-                  {annualPkg?.priceString || "—"} {t.paywall.perYear}
+                  {annualDiscountPkg?.priceString || annualPkg?.priceString || "—"} {t.paywall.perYear}
                 </Text>
                 <Text style={styles.downsellOfferSub}>
-                  {annualPkg?.perMonthPrice || "—"} {t.paywall.perMonth}
+                  {annualDiscountPkg?.perMonthPrice || annualPkg?.perMonthPrice || "—"} {t.paywall.perMonth}
                 </Text>
               </View>
 
@@ -534,16 +544,18 @@ export function PaywallModal({
                 onPress={() => {
                   setShowDownsellModal(false);
                   setSelectedPlan("annual");
-                  void handleContinue("annual");
+                  void handleContinue("annual", annualDiscountPkg);
                 }}
-                disabled={loading || !annualPkg?.rcPackage}
+                disabled={loading || !(annualDiscountPkg || annualPkg)?.rcPackage}
                 style={[
                   styles.downsellCtaBtn,
-                  !annualPkg?.rcPackage && { opacity: 0.5 },
+                  !(annualDiscountPkg || annualPkg)?.rcPackage && { opacity: 0.5 },
                 ]}
               >
                 <Text style={styles.downsellCtaText}>
-                  {t.paywall.downsellCta}
+                  {annualDiscountPkg
+                    ? t.paywall.downsellDiscountCta
+                    : t.paywall.downsellCta}
                 </Text>
               </Pressable>
 
@@ -904,6 +916,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "900",
     color: "#FFFFFF",
+    marginTop: 4,
+  },
+  downsellOfferOldPrice: {
+    fontSize: 11,
+    color: TEXT_MUTED,
+    textDecorationLine: "line-through",
     marginTop: 4,
   },
   downsellOfferSub: {
